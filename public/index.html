@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SimConnections</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <h1>SimConnections</h1>
+      <p class="subtitle">Demo control: parking brake</p>
+      <p id="status" class="status status--waiting">Connecting…</p>
+
+      <label class="toggle" id="toggleLabel">
+        <input type="checkbox" id="controlToggle" disabled />
+        <span class="toggle__track" aria-hidden="true">
+          <span class="toggle__thumb"></span>
+        </span>
+        <span class="toggle__text">Released</span>
+      </label>
+
+      <p class="hint">
+        Mirrors <code>BRAKE PARKING POSITION</code>. Toggle sends
+        <code>PARKING_BRAKE_SET</code> (0 / 1).
+      </p>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

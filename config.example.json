@@ -1,0 +1,7 @@
+{
+  "httpPort": 3847,
+  "simconnect": {
+    "host": "127.0.0.1",
+    "port": 5111
+  }
+}

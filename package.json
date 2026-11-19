@@ -1,0 +1,23 @@
+{
+  "name": "simconnections",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser SimConnect test harness (TCP)",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "node-simconnect": "^4.0.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
