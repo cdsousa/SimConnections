@@ -54,3 +54,7 @@ src/simconnect.ts    # SimConnect session
 src/server.ts        # static UI + WebSocket bridge
 public/              # browser
 ```
+
+## Higher-level libraries (optional)
+
+This project talks to MSFS through **[node-simconnect](https://github.com/EvenAR/node-simconnect)** directly so the SimConnect flow stays easy to follow. If you add many simvars or controls, a wrapper such as **[msfs-simconnect-api-wrapper](https://github.com/Pomax/msfs-simconnect-api-wrapper)** (built on the same library) can reduce boilerplate via helpers like `periodic`, `get`, and `trigger`. You could swap only `src/simconnect.ts` behind the same WebSocket API without changing the browser UI.
