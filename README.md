@@ -38,6 +38,12 @@ Open `http://localhost:<httpPort>` from config.
 bun run start -- --panel ./panels/example
 ```
 
+**Exterior lights** (iniBuilds A320neo v2 — wing first, `L:INI_WING_LIGHT_SWITCH`):
+
+```bash
+bun run start -- --panel ./panels/ext-light
+```
+
 With no `--panel`, the default demo in `public/` is served.
 
 ## Custom panels
@@ -80,7 +86,23 @@ In HTML:
 }
 ```
 
-See `panels/example/` for a minimal custom panel.
+See `panels/example/` for a minimal custom panel (simvar + sim event).
+
+### `lvar-bool` widgets
+
+For aircraft local variables (read/write via `L:…`, FLOAT64):
+
+```json
+{
+  "id": "wingLight",
+  "type": "lvar-bool",
+  "lvar": "INI_WING_LIGHT_SWITCH",
+  "on": 1,
+  "off": 0
+}
+```
+
+See `panels/ext-light/`.
 
 ## WebSocket (`/ws`)
 

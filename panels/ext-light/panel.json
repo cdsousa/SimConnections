@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "widgets": [
+    {
+      "id": "wingLight",
+      "type": "lvar-bool",
+      "lvar": "INI_WING_LIGHT_SWITCH",
+      "on": 1,
+      "off": 0
+    }
+  ]
+}

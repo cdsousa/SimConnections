@@ -3,13 +3,20 @@ import {
   EventFlag,
   open,
   Protocol,
+  RawBuffer,
   SimConnectConstants,
   SimConnectDataType,
   SimConnectPeriod,
   type RecvOpen,
   type SimConnectConnection,
 } from 'node-simconnect';
-import type { BoolWidget, PanelManifest } from './panel.js';
+import {
+  type BoolWidget,
+  type LvarBoolWidget,
+  type PanelManifest,
+  type PanelWidget,
+  lvarSimName,
+} from './panel.js';
 
 const NOTIFICATION_GROUP = 1;
 const RECONNECT_MS = 5000;
@@ -24,12 +31,31 @@ export type SimStatus = {
 
 export type WidgetValues = Record<string, boolean>;
 
-type WriteBinding = {
+type EventWriteBinding = {
+  kind: 'event';
   widgetId: string;
   clientEventId: number;
   on: number;
   off: number;
 };
+
+type LvarWriteBinding = {
+  kind: 'lvar';
+  widgetId: string;
+  definitionId: number;
+  on: number;
+  off: number;
+};
+
+type WriteBinding = EventWriteBinding | LvarWriteBinding;
+
+function isBoolWidget(w: PanelWidget): w is BoolWidget {
+  return w.type === 'bool';
+}
+
+function isLvarBoolWidget(w: PanelWidget): w is LvarBoolWidget {
+  return w.type === 'lvar-bool';
+}
 
 /** TCP SimConnect client driven by a panel manifest. */
 export class PanelSimSession extends EventEmitter {
@@ -37,9 +63,11 @@ export class PanelSimSession extends EventEmitter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private simIsQuitting = false;
   private connecting = false;
-  private readonly widgetsById = new Map<string, BoolWidget>();
+  private readonly widgetsById = new Map<string, PanelWidget>();
   private readonly requestToWidget = new Map<number, string>();
+  private readonly requestIsLvar = new Map<number, boolean>();
   private readonly writeByWidgetId = new Map<string, WriteBinding>();
+  private readonly lvarOnValues = new Map<string, number>();
   private lastValues: WidgetValues = {};
 
   constructor(
@@ -50,6 +78,9 @@ export class PanelSimSession extends EventEmitter {
     super();
     for (const widget of manifest.widgets) {
       this.widgetsById.set(widget.id, widget);
+      if (isLvarBoolWidget(widget)) {
+        this.lvarOnValues.set(widget.id, widget.on);
+      }
     }
   }
 
@@ -76,13 +107,24 @@ export class PanelSimSession extends EventEmitter {
     const binding = this.writeByWidgetId.get(widgetId);
     if (!binding) return;
 
-    this.handle.transmitClientEvent(
-      SimConnectConstants.OBJECT_ID_USER,
-      binding.clientEventId,
-      value ? binding.on : binding.off,
-      NOTIFICATION_GROUP,
-      EventFlag.EVENT_FLAG_GROUPID_IS_PRIORITY,
-    );
+    if (binding.kind === 'event') {
+      this.handle.transmitClientEvent(
+        SimConnectConstants.OBJECT_ID_USER,
+        binding.clientEventId,
+        value ? binding.on : binding.off,
+        NOTIFICATION_GROUP,
+        EventFlag.EVENT_FLAG_GROUPID_IS_PRIORITY,
+      );
+      return;
+    }
+
+    const payload = new RawBuffer(16);
+    payload.writeFloat64(value ? binding.on : binding.off);
+    this.handle.setDataOnSimObject(binding.definitionId, SimConnectConstants.OBJECT_ID_USER, {
+      buffer: payload,
+      arrayCount: 0,
+      tagged: false,
+    });
   }
 
   private scheduleReconnect(): void {
@@ -100,6 +142,7 @@ export class PanelSimSession extends EventEmitter {
     this.handle?.close();
     this.handle = null;
     this.requestToWidget.clear();
+    this.requestIsLvar.clear();
     this.writeByWidgetId.clear();
 
     open('SimConnections', Protocol.SunRise, {
@@ -124,12 +167,31 @@ export class PanelSimSession extends EventEmitter {
     let requestId = FIRST_REQUEST_ID;
 
     for (const widget of this.widgetsById.values()) {
-      handle.addToDataDefinition(
-        definitionId,
-        widget.read.name,
-        widget.read.unit,
-        SimConnectDataType.INT32,
-      );
+      if (isBoolWidget(widget)) {
+        handle.addToDataDefinition(
+          definitionId,
+          widget.read.name,
+          widget.read.unit,
+          SimConnectDataType.INT32,
+        );
+        this.requestIsLvar.set(requestId, false);
+      } else if (isLvarBoolWidget(widget)) {
+        handle.addToDataDefinition(
+          definitionId,
+          lvarSimName(widget),
+          'Number',
+          SimConnectDataType.FLOAT64,
+        );
+        this.requestIsLvar.set(requestId, true);
+        this.writeByWidgetId.set(widget.id, {
+          kind: 'lvar',
+          widgetId: widget.id,
+          definitionId,
+          on: widget.on,
+          off: widget.off,
+        });
+      }
+
       handle.requestDataOnSimObject(
         requestId,
         definitionId,
@@ -145,6 +207,8 @@ export class PanelSimSession extends EventEmitter {
     let nextClientEventId = FIRST_CLIENT_EVENT_ID;
 
     for (const widget of this.widgetsById.values()) {
+      if (!isBoolWidget(widget)) continue;
+
       const eventName = widget.write.event;
       let clientEventId = eventNameToClientId.get(eventName);
       if (clientEventId === undefined) {
@@ -154,6 +218,7 @@ export class PanelSimSession extends EventEmitter {
         handle.mapClientEventToSimEvent(clientEventId, eventName);
       }
       this.writeByWidgetId.set(widget.id, {
+        kind: 'event',
         widgetId: widget.id,
         clientEventId,
         on: widget.write.on,
@@ -169,7 +234,16 @@ export class PanelSimSession extends EventEmitter {
     handle.on('simObjectData', (data) => {
       const widgetId = this.requestToWidget.get(data.requestID);
       if (!widgetId) return;
-      const value = data.data.readInt32() === 1;
+
+      let value: boolean;
+      if (this.requestIsLvar.get(data.requestID)) {
+        const raw = data.data.readFloat64();
+        const onVal = this.lvarOnValues.get(widgetId) ?? 1;
+        value = Math.abs(raw - onVal) < 0.001;
+      } else {
+        value = data.data.readInt32() === 1;
+      }
+
       this.lastValues[widgetId] = value;
       this.emit('values', { ...this.lastValues });
     });

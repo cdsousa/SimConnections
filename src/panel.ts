@@ -20,12 +20,28 @@ export type BoolWidget = {
   write: BoolWidgetWrite;
 };
 
+/** Boolean switch backed by an L: local var (FLOAT64 write via setDataOnSimObject). */
+export type LvarBoolWidget = {
+  id: string;
+  type: 'lvar-bool';
+  /** Name without the L: prefix, e.g. INI_WING_LIGHT_SWITCH */
+  lvar: string;
+  on: number;
+  off: number;
+};
+
+export type PanelWidget = BoolWidget | LvarBoolWidget;
+
 export type PanelManifest = {
   version: 1;
-  widgets: BoolWidget[];
+  widgets: PanelWidget[];
 };
 
 const ALLOWED_DATUMS = new Set(['int32']);
+
+function lvarDatumName(lvar: string): string {
+  return lvar.startsWith('L:') ? lvar : `L:${lvar}`;
+}
 
 /** Load and validate `panel.json` from a panel directory. */
 export function loadPanelManifest(panelDir: string): PanelManifest {
@@ -57,7 +73,7 @@ export function loadPanelManifest(panelDir: string): PanelManifest {
   }
 
   const ids = new Set<string>();
-  const widgets: BoolWidget[] = [];
+  const widgets: PanelWidget[] = [];
 
   for (const entry of obj.widgets) {
     if (!entry || typeof entry !== 'object') {
@@ -73,8 +89,27 @@ export function loadPanelManifest(panelDir: string): PanelManifest {
     }
     ids.add(w.id);
 
+    if (w.type === 'lvar-bool') {
+      if (typeof w.lvar !== 'string' || !w.lvar) {
+        throw new Error(`${manifestPath}: widget "${w.id}" lvar must be a non-empty string`);
+      }
+      if (typeof w.on !== 'number' || typeof w.off !== 'number') {
+        throw new Error(`${manifestPath}: widget "${w.id}" must include numeric on and off`);
+      }
+      widgets.push({
+        id: w.id,
+        type: 'lvar-bool',
+        lvar: lvarDatumName(w.lvar).slice(2),
+        on: w.on,
+        off: w.off,
+      });
+      continue;
+    }
+
     if (w.type !== 'bool') {
-      throw new Error(`${manifestPath}: widget "${w.id}" type must be "bool" in v1`);
+      throw new Error(
+        `${manifestPath}: widget "${w.id}" type must be "bool" or "lvar-bool"`,
+      );
     }
 
     const read = w.read as Record<string, unknown> | undefined;
@@ -122,4 +157,8 @@ export function loadPanelManifest(panelDir: string): PanelManifest {
   }
 
   return { version: 1, widgets };
+}
+
+export function lvarSimName(widget: LvarBoolWidget): string {
+  return `L:${widget.lvar}`;
 }

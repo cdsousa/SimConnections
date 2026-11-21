@@ -26,16 +26,19 @@ function setWidgetsEnabled(enabled) {
   }
 }
 
+function labelFor(input, on) {
+  const onText = input.getAttribute('data-sc-on') ?? 'Set';
+  const offText = input.getAttribute('data-sc-off') ?? 'Released';
+  return on ? onText : offText;
+}
+
 function applyValues(widgets) {
   if (!widgets || typeof widgets !== 'object') return;
   for (const [id, input] of widgetInputs) {
     if (typeof widgets[id] === 'boolean') {
       input.checked = widgets[id];
-      const label = input.closest('label');
-      const textEl = label?.querySelector('.toggle__text');
-      if (textEl) {
-        textEl.textContent = widgets[id] ? 'Set' : 'Released';
-      }
+      const textEl = input.closest('label')?.querySelector('.toggle__text');
+      if (textEl) textEl.textContent = labelFor(input, widgets[id]);
     }
   }
 }
@@ -87,9 +90,7 @@ for (const [id, input] of widgetInputs) {
     if (!ws || ws.readyState !== WebSocket.OPEN || input.disabled) return;
     ws.send(JSON.stringify({ type: 'set', id, value: input.checked }));
     const textEl = input.closest('label')?.querySelector('.toggle__text');
-    if (textEl) {
-      textEl.textContent = input.checked ? 'Set' : 'Released';
-    }
+    if (textEl) textEl.textContent = labelFor(input, input.checked);
   });
 }
 
