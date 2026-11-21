@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "widgets": [
+    {
+      "id": "parkingBrake",
+      "type": "bool",
+      "read": {
+        "name": "BRAKE PARKING POSITION",
+        "unit": "bool",
+        "datum": "int32"
+      },
+      "write": {
+        "event": "PARKING_BRAKE_SET",
+        "on": 1,
+        "off": 0
+      }
+    }
+  ]
+}

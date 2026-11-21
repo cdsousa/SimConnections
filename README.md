@@ -1,6 +1,6 @@
 # SimConnections
 
-Browser test harness for MSFS 2024 via [node-simconnect](https://github.com/EvenAR/node-simconnect) (TCP). Demo control: **parking brake**.
+Browser UI for MSFS 2024 via [node-simconnect](https://github.com/EvenAR/node-simconnect) (TCP). The Node server owns SimConnect; custom **panel folders** define layout in HTML and bindings in `panel.json`.
 
 ## Prerequisites
 
@@ -26,35 +26,88 @@ Copy from `config.example.json` if needed. Optional: set `CONFIG_PATH` to use an
 ## Run
 
 ```bash
-cd ~/MSFS2024/simconnections
+cd ~/MSFS2024/SimConnections
 bun install && bun run start
 ```
 
 Open `http://localhost:<httpPort>` from config.
+
+**Custom panel folder** (must contain `index.html` and `panel.json`):
+
+```bash
+bun run start -- --panel ./panels/example
+```
+
+With no `--panel`, the default demo in `public/` is served.
+
+## Custom panels
+
+A panel directory needs:
+
+| File | Role |
+|------|------|
+| `index.html` | Layout and widgets |
+| `panel.json` | SimConnect bindings (server reads at startup) |
+| `style.css`, assets | Optional styling |
+
+In HTML:
+
+- Include `<script src="/__simconnections/client.js"></script>` (bundled runtime from the server).
+- Mark connection text with `data-sc-status`.
+- Bind boolean toggles: `<input type="checkbox" data-sc-widget="yourWidgetId" />`.
+
+### `panel.json` (v1)
+
+```json
+{
+  "version": 1,
+  "widgets": [
+    {
+      "id": "parkingBrake",
+      "type": "bool",
+      "read": {
+        "name": "BRAKE PARKING POSITION",
+        "unit": "bool",
+        "datum": "int32"
+      },
+      "write": {
+        "event": "PARKING_BRAKE_SET",
+        "on": 1,
+        "off": 0
+      }
+    }
+  ]
+}
+```
+
+See `panels/example/` for a minimal custom panel.
 
 ## WebSocket (`/ws`)
 
 | Message | Meaning |
 |---------|---------|
 | `{"type":"status","connected":true,"sim":"SunRise"}` | Sim link up |
-| `{"type":"state","on":true}` | Parking brake set |
-| `{"type":"set","on":false}` | Client command |
+| `{"type":"values","widgets":{"parkingBrake":true}}` | Snapshot of all widget values |
+| `{"type":"set","id":"parkingBrake","value":false}` | Client command |
 
-## SimConnect (demo)
+## SimConnect (demo widget)
 
-- **Read:** `BRAKE PARKING POSITION`, pushed ~1×/sim second → see `src/simconnect.ts` `bindSession`
+- **Read:** `BRAKE PARKING POSITION`, pushed ~1×/sim second → see `src/simconnect.ts`
 - **Write:** `PARKING_BRAKE_SET` (`0` / `1`)
 
 ## Layout
 
 ```
-config.json          # HTTP + SimConnect TCP targets
-src/config.ts        # load config
-src/simconnect.ts    # SimConnect session
-src/server.ts        # static UI + WebSocket bridge
-public/              # browser
+config.json              # HTTP + SimConnect TCP targets
+src/cli.ts               # --panel parsing
+src/panel.ts             # panel.json load/validate
+src/simconnect.ts        # SimConnect session from manifest
+src/server.ts            # static panel + WebSocket bridge
+client/simconnections.js # browser runtime
+public/                  # default demo panel
+panels/example/          # sample custom panel
 ```
 
 ## Higher-level libraries (optional)
 
-This project talks to MSFS through **[node-simconnect](https://github.com/EvenAR/node-simconnect)** directly so the SimConnect flow stays easy to follow. If you add many simvars or controls, a wrapper such as **[msfs-simconnect-api-wrapper](https://github.com/Pomax/msfs-simconnect-api-wrapper)** (built on the same library) can reduce boilerplate via helpers like `periodic`, `get`, and `trigger`. You could swap only `src/simconnect.ts` behind the same WebSocket API without changing the browser UI.
+This project talks to MSFS through **[node-simconnect](https://github.com/EvenAR/node-simconnect)** directly so the SimConnect flow stays easy to follow. If you add many simvars or controls, a wrapper such as **[msfs-simconnect-api-wrapper](https://github.com/Pomax/msfs-simconnect-api-wrapper)** (built on the same library) can reduce boilerplate. You could swap only `src/simconnect.ts` behind the same WebSocket API without changing panel HTML.

@@ -10,10 +10,15 @@
     <main class="panel">
       <h1>SimConnections</h1>
       <p class="subtitle">Demo control: parking brake</p>
-      <p id="status" class="status status--waiting">Connecting…</p>
+      <p id="status" class="status status--waiting" data-sc-status>Connecting…</p>
 
       <label class="toggle" id="toggleLabel">
-        <input type="checkbox" id="controlToggle" disabled />
+        <input
+          type="checkbox"
+          id="controlToggle"
+          data-sc-widget="parkingBrake"
+          disabled
+        />
         <span class="toggle__track" aria-hidden="true">
           <span class="toggle__thumb"></span>
         </span>
@@ -25,6 +30,6 @@
         <code>PARKING_BRAKE_SET</code> (0 / 1).
       </p>
     </main>
-    <script src="/app.js" type="module"></script>
+    <script src="/__simconnections/client.js"></script>
   </body>
 </html>

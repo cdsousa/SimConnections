@@ -2,24 +2,39 @@ import express from 'express';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WebSocket, WebSocketServer } from 'ws';
+import { WebSocketServer } from 'ws';
+import { parseCli } from './cli.js';
 import { loadConfig } from './config.js';
-import { SimConnections } from './simconnect.js';
+import { loadPanelManifest } from './panel.js';
+import { PanelSimSession } from './simconnect.js';
 
 const config = loadConfig();
+const cli = parseCli();
+const manifest = loadPanelManifest(cli.panelDir);
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const publicDir = path.join(__dirname, '..', 'public');
+const projectRoot = path.join(__dirname, '..');
+const clientRuntimePath = path.join(projectRoot, 'client', 'simconnections.js');
 
 const app = express();
-app.use(express.static(publicDir));
+app.get('/__simconnections/client.js', (_req, res) => {
+  res.type('application/javascript');
+  res.sendFile(clientRuntimePath);
+});
+app.use(express.static(cli.panelDir));
 
 const httpServer = createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-const sim = new SimConnections(config.simconnect.host, config.simconnect.port);
+const sim = new PanelSimSession(
+  config.simconnect.host,
+  config.simconnect.port,
+  manifest,
+);
 
-// Cache last messages so new browser tabs catch up immediately.
 let lastStatus: { connected: boolean; sim?: string } = { connected: false };
-let lastState: { on: boolean } | null = null;
+let lastValues: Record<string, boolean> = {};
+
+const writableIds = new Set(manifest.widgets.map((w) => w.id));
 
 function broadcast(payload: object): void {
   const json = JSON.stringify(payload);
@@ -36,16 +51,30 @@ wss.on('connection', (ws) => {
       sim: lastStatus.sim,
     }),
   );
-  if (lastState) ws.send(JSON.stringify({ type: 'state', on: lastState.on }));
+  ws.send(JSON.stringify({ type: 'values', widgets: lastValues }));
 
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(
         Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw),
-      ) as { type?: string; on?: unknown };
-      if (msg.type === 'set' && typeof msg.on === 'boolean') {
-        sim.setControl(msg.on);
+      ) as { type?: string; id?: unknown; value?: unknown };
+
+      if (
+        msg.type === 'set' &&
+        typeof msg.id === 'string' &&
+        typeof msg.value === 'boolean'
+      ) {
+        if (!writableIds.has(msg.id)) {
+          ws.send(
+            JSON.stringify({ type: 'error', message: `Unknown widget: ${msg.id}` }),
+          );
+          return;
+        }
+        sim.setWidget(msg.id, msg.value);
+        return;
       }
+
+      ws.send(JSON.stringify({ type: 'error', message: 'Invalid message' }));
     } catch {
       ws.send(JSON.stringify({ type: 'error', message: 'Invalid message' }));
     }
@@ -61,15 +90,16 @@ sim.on('status', (status) => {
   });
 });
 
-sim.on('state', (state) => {
-  lastState = state;
-  broadcast({ type: 'state', on: state.on });
+sim.on('values', (values) => {
+  lastValues = values;
+  broadcast({ type: 'values', widgets: values });
 });
 
 sim.start();
 
 httpServer.listen(config.httpPort, () => {
   console.log(`UI http://localhost:${config.httpPort}`);
+  console.log(`Panel ${cli.panelDir}`);
   console.log(
     `SimConnect ${config.simconnect.host}:${config.simconnect.port} (from config.json)`,
   );

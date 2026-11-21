@@ -9,34 +9,48 @@ import {
   type RecvOpen,
   type SimConnectConnection,
 } from 'node-simconnect';
+import type { BoolWidget, PanelManifest } from './panel.js';
 
-const DEFINITION_ID = 1;
-const REQUEST_ID = 1;
-const CLIENT_EVENT_PARKING_BRAKE_SET = 1;
 const NOTIFICATION_GROUP = 1;
 const RECONNECT_MS = 5000;
+const FIRST_DEFINITION_ID = 1;
+const FIRST_REQUEST_ID = 1;
+const FIRST_CLIENT_EVENT_ID = 1;
 
 export type SimStatus = {
   connected: boolean;
   applicationName?: string;
 };
 
-export type ControlState = {
-  on: boolean;
+export type WidgetValues = Record<string, boolean>;
+
+type WriteBinding = {
+  widgetId: string;
+  clientEventId: number;
+  on: number;
+  off: number;
 };
 
-/** TCP SimConnect client: parking brake demo (change bindSession to try other controls). */
-export class SimConnections extends EventEmitter {
+/** TCP SimConnect client driven by a panel manifest. */
+export class PanelSimSession extends EventEmitter {
   private handle: SimConnectConnection | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private simIsQuitting = false;
   private connecting = false;
+  private readonly widgetsById = new Map<string, BoolWidget>();
+  private readonly requestToWidget = new Map<number, string>();
+  private readonly writeByWidgetId = new Map<string, WriteBinding>();
+  private lastValues: WidgetValues = {};
 
   constructor(
     private readonly host: string,
     private readonly port: number,
+    manifest: PanelManifest,
   ) {
     super();
+    for (const widget of manifest.widgets) {
+      this.widgetsById.set(widget.id, widget);
+    }
   }
 
   start(): void {
@@ -53,13 +67,19 @@ export class SimConnections extends EventEmitter {
     this.handle = null;
   }
 
-  /** Write: K:PARKING_BRAKE_SET with 0 = release, 1 = set. */
-  setControl(on: boolean): void {
+  getValues(): WidgetValues {
+    return { ...this.lastValues };
+  }
+
+  setWidget(widgetId: string, value: boolean): void {
     if (!this.handle) return;
+    const binding = this.writeByWidgetId.get(widgetId);
+    if (!binding) return;
+
     this.handle.transmitClientEvent(
       SimConnectConstants.OBJECT_ID_USER,
-      CLIENT_EVENT_PARKING_BRAKE_SET,
-      on ? 1 : 0,
+      binding.clientEventId,
+      value ? binding.on : binding.off,
       NOTIFICATION_GROUP,
       EventFlag.EVENT_FLAG_GROUPID_IS_PRIORITY,
     );
@@ -79,6 +99,8 @@ export class SimConnections extends EventEmitter {
     this.connecting = true;
     this.handle?.close();
     this.handle = null;
+    this.requestToWidget.clear();
+    this.writeByWidgetId.clear();
 
     open('SimConnections', Protocol.SunRise, {
       host: this.host,
@@ -98,25 +120,46 @@ export class SimConnections extends EventEmitter {
   }
 
   private bindSession(recvOpen: RecvOpen, handle: SimConnectConnection): void {
-    // Outbound: map our client event id → sim key event name.
-    handle.mapClientEventToSimEvent(
-      CLIENT_EVENT_PARKING_BRAKE_SET,
-      'PARKING_BRAKE_SET',
-    );
+    let definitionId = FIRST_DEFINITION_ID;
+    let requestId = FIRST_REQUEST_ID;
 
-    // Inbound: MSFS pushes this definition once per sim second (not a Node poll loop).
-    handle.addToDataDefinition(
-      DEFINITION_ID,
-      'BRAKE PARKING POSITION',
-      'bool',
-      SimConnectDataType.INT32,
-    );
-    handle.requestDataOnSimObject(
-      REQUEST_ID,
-      DEFINITION_ID,
-      SimConnectConstants.OBJECT_ID_USER,
-      SimConnectPeriod.SECOND,
-    );
+    for (const widget of this.widgetsById.values()) {
+      handle.addToDataDefinition(
+        definitionId,
+        widget.read.name,
+        widget.read.unit,
+        SimConnectDataType.INT32,
+      );
+      handle.requestDataOnSimObject(
+        requestId,
+        definitionId,
+        SimConnectConstants.OBJECT_ID_USER,
+        SimConnectPeriod.SECOND,
+      );
+      this.requestToWidget.set(requestId, widget.id);
+      definitionId++;
+      requestId++;
+    }
+
+    const eventNameToClientId = new Map<string, number>();
+    let nextClientEventId = FIRST_CLIENT_EVENT_ID;
+
+    for (const widget of this.widgetsById.values()) {
+      const eventName = widget.write.event;
+      let clientEventId = eventNameToClientId.get(eventName);
+      if (clientEventId === undefined) {
+        clientEventId = nextClientEventId;
+        nextClientEventId++;
+        eventNameToClientId.set(eventName, clientEventId);
+        handle.mapClientEventToSimEvent(clientEventId, eventName);
+      }
+      this.writeByWidgetId.set(widget.id, {
+        widgetId: widget.id,
+        clientEventId,
+        on: widget.write.on,
+        off: widget.write.off,
+      });
+    }
 
     this.emit('status', {
       connected: true,
@@ -124,8 +167,11 @@ export class SimConnections extends EventEmitter {
     });
 
     handle.on('simObjectData', (data) => {
-      if (data.requestID !== REQUEST_ID) return;
-      this.emit('state', { on: data.data.readInt32() === 1 });
+      const widgetId = this.requestToWidget.get(data.requestID);
+      if (!widgetId) return;
+      const value = data.data.readInt32() === 1;
+      this.lastValues[widgetId] = value;
+      this.emit('values', { ...this.lastValues });
     });
 
     handle.on('exception', (ex) => console.warn('SimConnect exception:', ex));
