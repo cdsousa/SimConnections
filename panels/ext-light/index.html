@@ -9,22 +9,42 @@
   <body>
     <main class="panel">
       <h1>EXT LT</h1>
-      <p class="subtitle">iniBuilds A320neo v2 · <code>L:INI_WING_LIGHT_SWITCH</code></p>
+      <p class="subtitle">iniBuilds A320neo v2</p>
       <p class="status status--waiting" data-sc-status>Connecting…</p>
 
-      <label class="toggle">
-        <input
-          type="checkbox"
-          data-sc-widget="wingLight"
-          data-sc-on="ON"
-          data-sc-off="OFF"
-          disabled
-        />
-        <span class="toggle__track" aria-hidden="true">
-          <span class="toggle__thumb"></span>
-        </span>
-        <span class="toggle__text">OFF</span>
-      </label>
+      <div class="controls">
+        <section class="control">
+          <h2 class="control__label">STROBE</h2>
+          <div
+            class="enum"
+            data-sc-type="enum"
+            data-sc-widget="strobeLight"
+            role="group"
+            aria-label="Strobe light"
+          >
+            <button type="button" class="enum__btn" data-sc-value="2" disabled>OFF</button>
+            <button type="button" class="enum__btn" data-sc-value="1" disabled>AUTO</button>
+            <button type="button" class="enum__btn" data-sc-value="0" disabled>ON</button>
+          </div>
+        </section>
+
+        <section class="control">
+          <h2 class="control__label">WING</h2>
+          <label class="toggle">
+            <input
+              type="checkbox"
+              data-sc-widget="wingLight"
+              data-sc-on="ON"
+              data-sc-off="OFF"
+              disabled
+            />
+            <span class="toggle__track" aria-hidden="true">
+              <span class="toggle__thumb"></span>
+            </span>
+            <span class="toggle__text">OFF</span>
+          </label>
+        </section>
+      </div>
     </main>
     <script src="/__simconnections/client.js"></script>
   </body>

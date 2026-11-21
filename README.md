@@ -88,9 +88,22 @@ In HTML:
 
 See `panels/example/` for a minimal custom panel (simvar + sim event).
 
-### `lvar-bool` widgets
+### `lvar-bool` / `lvar-enum` widgets
 
-For aircraft local variables (read/write via `L:…`, FLOAT64):
+Aircraft local variables (read/write via `L:…`, FLOAT64). Enum values must match Behaviours (cycle the switch in the Variables tab if unsure).
+
+```json
+{
+  "id": "strobeLight",
+  "type": "lvar-enum",
+  "lvar": "INI_STROBE_LIGHT_SWITCH",
+  "states": [
+    { "value": 2, "label": "OFF" },
+    { "value": 1, "label": "AUTO" },
+    { "value": 0, "label": "ON" }
+  ]
+}
+```
 
 ```json
 {
@@ -102,7 +115,7 @@ For aircraft local variables (read/write via `L:…`, FLOAT64):
 }
 ```
 
-See `panels/ext-light/`.
+HTML: checkbox for `lvar-bool`; for `lvar-enum`, a `data-sc-type="enum"` container with `button[data-sc-value]` (see `panels/ext-light/`).
 
 ## WebSocket (`/ws`)
 

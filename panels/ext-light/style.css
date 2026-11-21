@@ -125,3 +125,56 @@ code {
   font-size: 0.78rem;
   color: var(--accent);
 }
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.control__label {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.enum {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.enum__btn {
+  flex: 1;
+  padding: 0.55rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: #252a38;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.enum__btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.enum__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.enum__btn--active {
+  background: #2d6b4a;
+  border-color: #3dcc7a;
+  color: #fff;
+}
+
+.enum__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

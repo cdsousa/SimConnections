@@ -13,6 +13,7 @@ import {
 import {
   type BoolWidget,
   type LvarBoolWidget,
+  type LvarEnumWidget,
   type PanelManifest,
   type PanelWidget,
   lvarSimName,
@@ -29,7 +30,9 @@ export type SimStatus = {
   applicationName?: string;
 };
 
-export type WidgetValues = Record<string, boolean>;
+export type WidgetValues = Record<string, boolean | number>;
+
+type RequestKind = 'simvar' | 'lvar-bool' | 'lvar-enum';
 
 type EventWriteBinding = {
   kind: 'event';
@@ -39,15 +42,21 @@ type EventWriteBinding = {
   off: number;
 };
 
-type LvarWriteBinding = {
-  kind: 'lvar';
+type LvarBoolWriteBinding = {
+  kind: 'lvar-bool';
   widgetId: string;
   definitionId: number;
   on: number;
   off: number;
 };
 
-type WriteBinding = EventWriteBinding | LvarWriteBinding;
+type LvarEnumWriteBinding = {
+  kind: 'lvar-enum';
+  widgetId: string;
+  definitionId: number;
+};
+
+type WriteBinding = EventWriteBinding | LvarBoolWriteBinding | LvarEnumWriteBinding;
 
 function isBoolWidget(w: PanelWidget): w is BoolWidget {
   return w.type === 'bool';
@@ -55,6 +64,14 @@ function isBoolWidget(w: PanelWidget): w is BoolWidget {
 
 function isLvarBoolWidget(w: PanelWidget): w is LvarBoolWidget {
   return w.type === 'lvar-bool';
+}
+
+function isLvarEnumWidget(w: PanelWidget): w is LvarEnumWidget {
+  return w.type === 'lvar-enum';
+}
+
+function lvarDatum(widget: LvarBoolWidget | LvarEnumWidget): string {
+  return lvarSimName(widget.lvar);
 }
 
 /** TCP SimConnect client driven by a panel manifest. */
@@ -65,7 +82,7 @@ export class PanelSimSession extends EventEmitter {
   private connecting = false;
   private readonly widgetsById = new Map<string, PanelWidget>();
   private readonly requestToWidget = new Map<number, string>();
-  private readonly requestIsLvar = new Map<number, boolean>();
+  private readonly requestKind = new Map<number, RequestKind>();
   private readonly writeByWidgetId = new Map<string, WriteBinding>();
   private readonly lvarOnValues = new Map<string, number>();
   private lastValues: WidgetValues = {};
@@ -102,12 +119,13 @@ export class PanelSimSession extends EventEmitter {
     return { ...this.lastValues };
   }
 
-  setWidget(widgetId: string, value: boolean): void {
+  setWidget(widgetId: string, value: boolean | number): void {
     if (!this.handle) return;
     const binding = this.writeByWidgetId.get(widgetId);
     if (!binding) return;
 
     if (binding.kind === 'event') {
+      if (typeof value !== 'boolean') return;
       this.handle.transmitClientEvent(
         SimConnectConstants.OBJECT_ID_USER,
         binding.clientEventId,
@@ -118,8 +136,17 @@ export class PanelSimSession extends EventEmitter {
       return;
     }
 
+    let numeric: number;
+    if (binding.kind === 'lvar-bool') {
+      if (typeof value !== 'boolean') return;
+      numeric = value ? binding.on : binding.off;
+    } else {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return;
+      numeric = value;
+    }
+
     const payload = new RawBuffer(16);
-    payload.writeFloat64(value ? binding.on : binding.off);
+    payload.writeFloat64(numeric);
     this.handle.setDataOnSimObject(binding.definitionId, SimConnectConstants.OBJECT_ID_USER, {
       buffer: payload,
       arrayCount: 0,
@@ -142,7 +169,7 @@ export class PanelSimSession extends EventEmitter {
     this.handle?.close();
     this.handle = null;
     this.requestToWidget.clear();
-    this.requestIsLvar.clear();
+    this.requestKind.clear();
     this.writeByWidgetId.clear();
 
     open('SimConnections', Protocol.SunRise, {
@@ -174,21 +201,34 @@ export class PanelSimSession extends EventEmitter {
           widget.read.unit,
           SimConnectDataType.INT32,
         );
-        this.requestIsLvar.set(requestId, false);
+        this.requestKind.set(requestId, 'simvar');
       } else if (isLvarBoolWidget(widget)) {
         handle.addToDataDefinition(
           definitionId,
-          lvarSimName(widget),
+          lvarDatum(widget),
           'Number',
           SimConnectDataType.FLOAT64,
         );
-        this.requestIsLvar.set(requestId, true);
+        this.requestKind.set(requestId, 'lvar-bool');
         this.writeByWidgetId.set(widget.id, {
-          kind: 'lvar',
+          kind: 'lvar-bool',
           widgetId: widget.id,
           definitionId,
           on: widget.on,
           off: widget.off,
+        });
+      } else if (isLvarEnumWidget(widget)) {
+        handle.addToDataDefinition(
+          definitionId,
+          lvarDatum(widget),
+          'Number',
+          SimConnectDataType.FLOAT64,
+        );
+        this.requestKind.set(requestId, 'lvar-enum');
+        this.writeByWidgetId.set(widget.id, {
+          kind: 'lvar-enum',
+          widgetId: widget.id,
+          definitionId,
         });
       }
 
@@ -235,16 +275,18 @@ export class PanelSimSession extends EventEmitter {
       const widgetId = this.requestToWidget.get(data.requestID);
       if (!widgetId) return;
 
-      let value: boolean;
-      if (this.requestIsLvar.get(data.requestID)) {
+      const kind = this.requestKind.get(data.requestID);
+      if (kind === 'lvar-enum') {
+        const raw = data.data.readFloat64();
+        this.lastValues[widgetId] = raw;
+      } else if (kind === 'lvar-bool') {
         const raw = data.data.readFloat64();
         const onVal = this.lvarOnValues.get(widgetId) ?? 1;
-        value = Math.abs(raw - onVal) < 0.001;
+        this.lastValues[widgetId] = Math.abs(raw - onVal) < 0.001;
       } else {
-        value = data.data.readInt32() === 1;
+        this.lastValues[widgetId] = data.data.readInt32() === 1;
       }
 
-      this.lastValues[widgetId] = value;
       this.emit('values', { ...this.lastValues });
     });
 

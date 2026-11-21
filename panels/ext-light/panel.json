@@ -2,6 +2,16 @@
   "version": 1,
   "widgets": [
     {
+      "id": "strobeLight",
+      "type": "lvar-enum",
+      "lvar": "INI_STROBE_LIGHT_SWITCH",
+      "states": [
+        { "value": 2, "label": "OFF" },
+        { "value": 1, "label": "AUTO" },
+        { "value": 0, "label": "ON" }
+      ]
+    },
+    {
       "id": "wingLight",
       "type": "lvar-bool",
       "lvar": "INI_WING_LIGHT_SWITCH",

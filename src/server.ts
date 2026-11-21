@@ -32,7 +32,7 @@ const sim = new PanelSimSession(
 );
 
 let lastStatus: { connected: boolean; sim?: string } = { connected: false };
-let lastValues: Record<string, boolean> = {};
+let lastValues: Record<string, boolean | number> = {};
 
 const writableIds = new Set(manifest.widgets.map((w) => w.id));
 
@@ -59,18 +59,22 @@ wss.on('connection', (ws) => {
         Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw),
       ) as { type?: string; id?: unknown; value?: unknown };
 
-      if (
-        msg.type === 'set' &&
-        typeof msg.id === 'string' &&
-        typeof msg.value === 'boolean'
-      ) {
+      if (msg.type === 'set' && typeof msg.id === 'string') {
+        const { value } = msg;
+        if (
+          typeof value !== 'boolean' &&
+          (typeof value !== 'number' || !Number.isFinite(value))
+        ) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid message' }));
+          return;
+        }
         if (!writableIds.has(msg.id)) {
           ws.send(
             JSON.stringify({ type: 'error', message: `Unknown widget: ${msg.id}` }),
           );
           return;
         }
-        sim.setWidget(msg.id, msg.value);
+        sim.setWidget(msg.id, value);
         return;
       }
 

@@ -30,7 +30,20 @@ export type LvarBoolWidget = {
   off: number;
 };
 
-export type PanelWidget = BoolWidget | LvarBoolWidget;
+export type LvarEnumState = {
+  value: number;
+  label: string;
+};
+
+/** Multi-position switch via L: local var (FLOAT64). */
+export type LvarEnumWidget = {
+  id: string;
+  type: 'lvar-enum';
+  lvar: string;
+  states: LvarEnumState[];
+};
+
+export type PanelWidget = BoolWidget | LvarBoolWidget | LvarEnumWidget;
 
 export type PanelManifest = {
   version: 1;
@@ -106,9 +119,41 @@ export function loadPanelManifest(panelDir: string): PanelManifest {
       continue;
     }
 
+    if (w.type === 'lvar-enum') {
+      if (typeof w.lvar !== 'string' || !w.lvar) {
+        throw new Error(`${manifestPath}: widget "${w.id}" lvar must be a non-empty string`);
+      }
+      if (!Array.isArray(w.states) || w.states.length < 2) {
+        throw new Error(`${manifestPath}: widget "${w.id}" states must be an array of 2+ entries`);
+      }
+      const values = new Set<number>();
+      const states: LvarEnumState[] = [];
+      for (const s of w.states) {
+        if (!s || typeof s !== 'object') {
+          throw new Error(`${manifestPath}: widget "${w.id}" each state must be an object`);
+        }
+        const st = s as Record<string, unknown>;
+        if (typeof st.value !== 'number' || typeof st.label !== 'string' || !st.label) {
+          throw new Error(`${manifestPath}: widget "${w.id}" states need value and label`);
+        }
+        if (values.has(st.value)) {
+          throw new Error(`${manifestPath}: widget "${w.id}" duplicate state value ${st.value}`);
+        }
+        values.add(st.value);
+        states.push({ value: st.value, label: st.label });
+      }
+      widgets.push({
+        id: w.id,
+        type: 'lvar-enum',
+        lvar: lvarDatumName(w.lvar).slice(2),
+        states,
+      });
+      continue;
+    }
+
     if (w.type !== 'bool') {
       throw new Error(
-        `${manifestPath}: widget "${w.id}" type must be "bool" or "lvar-bool"`,
+        `${manifestPath}: widget "${w.id}" type must be "bool", "lvar-bool", or "lvar-enum"`,
       );
     }
 
@@ -159,6 +204,6 @@ export function loadPanelManifest(panelDir: string): PanelManifest {
   return { version: 1, widgets };
 }
 
-export function lvarSimName(widget: LvarBoolWidget): string {
-  return `L:${widget.lvar}`;
+export function lvarSimName(lvar: string): string {
+  return lvar.startsWith('L:') ? lvar : `L:${lvar}`;
 }
