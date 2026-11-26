@@ -2,6 +2,7 @@
   "name": "simconnections",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Browser SimConnect test harness (TCP)",
   "type": "module",
   "scripts": {
